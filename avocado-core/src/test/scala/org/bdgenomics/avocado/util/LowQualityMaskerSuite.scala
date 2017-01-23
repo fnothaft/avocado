@@ -45,7 +45,7 @@ class LowQualityMaskerSuite extends AvocadoFunSuite {
   val mixedRead = AlignmentRecord.newBuilder
     .setReadName("mixed")
     .setSequence("AAAAAAAA")
-    .setQual(Seq(0, 10, 35, 50, 45, 40, 20, 15).map(v => (v + 33.toChar)).mkString)
+    .setQual(Seq(0, 10, 35, 50, 45, 40, 20, 15).map(v => (v + 33).toChar).mkString)
     .build
 
   val goodRead = AlignmentRecord.newBuilder
@@ -55,32 +55,55 @@ class LowQualityMaskerSuite extends AvocadoFunSuite {
     .build
 
   val badRead = AlignmentRecord.newBuilder
+    .setReadName("bad")
     .setSequence("AAAAAA")
     .setQual((33).toChar.toString * 6)
     .build
 
-  ignore("don't mask a read with all high quality bases") {
+  test("read must have sequence and quality") {
+    intercept[IllegalArgumentException] {
+      LowQualityMasker.maskRead(AlignmentRecord.newBuilder
+        .setSequence("AAA")
+        .build, '*')
+    }
+    intercept[IllegalArgumentException] {
+      LowQualityMasker.maskRead(AlignmentRecord.newBuilder
+        .setQual("***")
+        .build, '*')
+    }
+  }
+
+  test("sequence and quality must be the same length") {
+    intercept[IllegalArgumentException] {
+      LowQualityMasker.maskRead(AlignmentRecord.newBuilder
+        .setSequence("AAA")
+        .setQual("**")
+        .build, '*')
+    }
+  }
+
+  test("don't mask a read with all high quality bases") {
     val newRead = LowQualityMasker.maskRead(goodRead,
       (20 + 33).toChar)
 
     assert(newRead.getSequence === "AAAAAA")
   }
 
-  ignore("mask all bases in a read with all low quality bases") {
+  test("mask all bases in a read with all low quality bases") {
     val newRead = LowQualityMasker.maskRead(badRead,
       (20 + 33).toChar)
 
     assert(newRead.getSequence === "NNNNNN")
   }
 
-  ignore("mask bases in a read with mixed qualities") {
+  test("mask bases in a read with mixed qualities") {
     val newRead = LowQualityMasker.maskRead(mixedRead,
       (20 + 33).toChar)
 
     assert(newRead.getSequence === "NNAAAAAN")
   }
 
-  ignore("mask an rdd of reads") {
+  sparkTest("mask an rdd of reads") {
     val maskedReads = LowQualityMasker.maskReads(readRdd(Seq(goodRead,
       badRead,
       mixedRead)), 10)

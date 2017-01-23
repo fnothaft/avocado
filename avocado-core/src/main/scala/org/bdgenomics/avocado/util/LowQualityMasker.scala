@@ -17,8 +17,10 @@
  */
 package org.bdgenomics.avocado.util
 
+import java.lang.StringBuilder
 import org.bdgenomics.adam.rdd.read.AlignmentRecordRDD
 import org.bdgenomics.formats.avro.AlignmentRecord
+import scala.annotation.tailrec
 
 /**
  * Singleton object for masking bases with low quality scores to 'N'.
@@ -41,7 +43,12 @@ object LowQualityMasker extends Serializable {
     require(quality >= 0 && quality <= 255,
       "Quality threshold (%d) must be between 0 and 255, inclusive.".format(quality))
 
-    ???
+    // convert quality score to 33 based char
+    val phredChar = (33 + quality).toChar
+
+    reads.transform(rdd => {
+      rdd.map(maskRead(_, phredChar))
+    })
   }
 
   /**
@@ -52,6 +59,37 @@ object LowQualityMasker extends Serializable {
    */
   private[util] def maskRead(read: AlignmentRecord,
                              quality: Char): AlignmentRecord = {
-    ???
+    require(read.getQual != null && read.getSequence != null,
+      "Read quality and sequence must not be null: %s".format(read))
+    val quals = read.getQual
+    val sequence = read.getSequence
+    val sequenceLength = sequence.length
+    require(quals.length == sequenceLength,
+      "Read quality and sequence have different lengths: %s".format(read))
+
+    @tailrec def mask(sb: StringBuilder,
+                      idx: Int = 0): String = {
+      if (idx >= sequenceLength) {
+        sb.toString
+      } else {
+        if (quals(idx) < quality) {
+          sb.append('N')
+        } else {
+          sb.append(sequence(idx))
+        }
+        mask(sb, idx = idx + 1)
+      }
+    }
+
+    // are any quality scores lower than our minimum quality?
+    // if so, mask
+    if (quals.exists(_ < quality)) {
+      val maskedSequence = mask(new StringBuilder(sequenceLength))
+      AlignmentRecord.newBuilder(read)
+        .setSequence(maskedSequence)
+        .build
+    } else {
+      read
+    }
   }
 }

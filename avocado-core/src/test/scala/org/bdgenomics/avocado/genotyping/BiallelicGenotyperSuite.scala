@@ -20,8 +20,10 @@ package org.bdgenomics.avocado.genotyping
 import org.bdgenomics.adam.rdd.ADAMContext._
 import org.bdgenomics.avocado.AvocadoFunSuite
 import org.bdgenomics.avocado.models.Observation
+import org.bdgenomics.avocado.realigner.Realigner
 import org.bdgenomics.avocado.util.{
   HardFilterGenotypes,
+  LowQualityMasker,
   TestHardFilterGenotypesArgs
 }
 import org.bdgenomics.formats.avro.{
@@ -437,14 +439,16 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
     })
   }
 
-  ignore("call hom alt C->CCCCT insertion at 1/866511") {
+  sparkTest("call hom alt C->CCCCT insertion at 1/866511") {
     val readPath = resourceUrl("NA12878.chr1.866511.sam")
     val reads = sc.loadAlignments(readPath.toString)
       .transform(rdd => {
         rdd.filter(_.getMapq > 0)
       })
+    val masked = LowQualityMasker.maskReads(reads, 20)
+    val realigned = Realigner.realign(masked, 20)
 
-    val gts = BiallelicGenotyper.discoverAndCall(reads,
+    val gts = BiallelicGenotyper.discoverAndCall(realigned,
       2,
       optPhredThreshold = Some(30)).transform(rdd => {
         rdd.filter(gt => gt.getAlleles.forall(_ == GenotypeAllele.ALT))

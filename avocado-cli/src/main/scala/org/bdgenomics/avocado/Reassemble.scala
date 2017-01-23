@@ -22,6 +22,7 @@ import org.bdgenomics.adam.rdd.ADAMContext._
 import org.bdgenomics.adam.rdd.ADAMSaveAnyArgs
 import org.bdgenomics.adam.rdd.read.{ AlignedReadRDD, AlignmentRecordRDD, MDTagging }
 import org.bdgenomics.avocado.realigner.Realigner
+import org.bdgenomics.avocado.util.LowQualityMasker
 import org.bdgenomics.utils.cli._
 import org.kohsuke.args4j.{ Argument, Option => Args4jOption }
 
@@ -58,6 +59,10 @@ class ReassembleArgs extends Args4jBase with ADAMSaveAnyArgs with ParquetArgs {
     name = "-defer_merging",
     usage = "Defers merging single file output")
   var deferMerging: Boolean = false
+  @Args4jOption(required = false,
+    name = "-mask_quality",
+    usage = "Minimum quality to not mask. Default is 0 (no masking).")
+  var maskQuality: Int = 0
 
   // required by ADAMSaveAnyArgs
   var sortFastqOutput: Boolean = false
@@ -78,8 +83,15 @@ class Reassemble(
     // load reads
     val reads = sc.loadAlignments(args.inputPath)
 
+    // if requested, mask the reads
+    val maybeMaskedReads = if (args.maskQuality > 0) {
+      LowQualityMasker.maskReads(reads, args.maskQuality)
+    } else {
+      reads
+    }
+
     // realign the reads
-    val reassembledReads = Realigner.realign(reads, args.kmerLength)
+    val reassembledReads = Realigner.realign(maybeMaskedReads, args.kmerLength)
 
     // save the reads
     reassembledReads.save(args)

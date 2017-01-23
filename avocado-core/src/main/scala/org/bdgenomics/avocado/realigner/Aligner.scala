@@ -46,7 +46,7 @@ object Aligner {
       val zippedSequences = refSeq.zip(altSeq)
 
       // we count off the number of bases at the start/end that match for trimming
-      val matchIdx = zippedSequences.indexWhere(p => p._1 != p._2)
+      val matchIdx = zippedSequences.indexWhere(p => p._1 != p._2 && p._2 != 'N')
 
       // if we've already trimmed once, we may not find an index on the second
       // trimming pass and matchIdx will be -1

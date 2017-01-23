@@ -84,6 +84,22 @@ class AlignerSuite extends FunSuite {
     assert(aln(4) === Match(10))
   }
 
+  test("align a minimally flanked sequence with 2 snps separated by 1bp, one masked") {
+
+    // k = 10
+    //                 | |
+    // read: ACTCTGAAACTGNAACCACTGGA
+    // ref:  ACTCTGAAACAGAAACCACTGGA
+    val aln = Aligner.align("ACTCTGAAACAGAAACCACTGGA",
+      "ACTCTGAAACTGNAACCACTGGA",
+      10)
+
+    assert(aln.size === 3)
+    assert(aln(0) === Match(10))
+    assert(aln(1) === Match(1, Some("A")))
+    assert(aln(2) === Match(12))
+  }
+
   test("align a minimally flanked sequence with 2 snps separated by 3bp") {
 
     // k = 10
@@ -133,6 +149,22 @@ class AlignerSuite extends FunSuite {
     assert(aln(1) === Insertion(1))
     assert(aln(2) === Match(1, Some("T")))
     assert(aln(3) === Match(10))
+  }
+
+  test("align a minimally flanked sequence with a complex insert with masked snp") {
+
+    // k = 10
+    //                 
+    // read: CTCTGAAACAANAACCACTGGT
+    // ref:  CTCTGAAACA_TAACCACTGGT
+    val aln = Aligner.align("CTCTGAAACATAACCACTGGT",
+      "CTCTGAAACAANAACCACTGGT",
+      10)
+
+    assert(aln.size === 3)
+    assert(aln(0) === Match(9))
+    assert(aln(1) === Insertion(1))
+    assert(aln(2) === Match(12))
   }
 
   test("align a minimally flanked sequence with a simple deletion") {

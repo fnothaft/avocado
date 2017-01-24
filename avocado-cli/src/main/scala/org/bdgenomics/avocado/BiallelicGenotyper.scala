@@ -153,6 +153,10 @@ class BiallelicGenotyperArgs extends Args4jBase with ADAMSaveAnyArgs with Parque
     name = "-max_indel_depth",
     usage = "Maximum INDEL depth for hard filtering. Default is 300. Set to a negative value to omit.")
   var maxIndelDepth: Int = 200
+  @Args4jOption(required = false,
+    name = "-generate_gvcf",
+    usage = "If true, generates a base pair resolution GVCF.")
+  var generateGvcf = false
 
   // required by HardFilterGenotypesArgs
   var maxSnpPhredStrandBias: Float = -1.0f
@@ -201,6 +205,7 @@ class BiallelicGenotyper(
     val genotypes = Option(args.variantsToCall).fold({
       Biallelic.discoverAndCall(gapFilteredReads,
         args.ploidy,
+        args.generateGvcf,
         optDesiredPartitionCount = optDesiredPartitionCount,
         optPhredThreshold = Some(args.minPhredForDiscovery),
         optMinObservations = Some(args.minObservationsForDiscovery),
@@ -214,6 +219,7 @@ class BiallelicGenotyper(
       Biallelic.call(gapFilteredReads,
         variants,
         args.ploidy,
+        args.generateGvcf,
         optDesiredPartitionCount = optDesiredPartitionCount,
         optDesiredPartitionSize = optDesiredPartitionSize,
         optDesiredMaxCoverage = optDesiredMaxCoverage)

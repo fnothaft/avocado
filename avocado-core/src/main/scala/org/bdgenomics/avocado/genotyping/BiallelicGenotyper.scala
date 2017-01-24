@@ -71,6 +71,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    * @param reads The reads to use as evidence.
    * @param variants The variants to force call.
    * @param ploidy The assumed copy number at each site.
+   * @param generateGvcf If true, generate gVCF base pair resolution model,
+   *   if false, generate variant site model only.
    * @param optDesiredPartitionCount Optional parameter for setting the number
    *   of partitions desired after the shuffle region join. Defaults to None.
    * @param optDesiredPartitionSize An optional number of reads per partition to
@@ -81,6 +83,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
   def call(reads: AlignmentRecordRDD,
            variants: VariantRDD,
            ploidy: Int,
+           generateGvcf: Boolean,
            optDesiredPartitionCount: Option[Int] = None,
            optDesiredPartitionSize: Option[Int] = None,
            optDesiredMaxCoverage: Option[Int] = None): GenotypeRDD = CallGenotypes.time {
@@ -140,7 +143,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     }
 
     // score variants and get observations
-    val observationRdd = readsToObservations(joinedRdd, ploidy)
+    val observationRdd = readsToObservations(joinedRdd, ploidy, generateGvcf)
 
     // genotype observations
     val genotypeRdd = observationsToGenotypes(observationRdd, samples.head)
@@ -160,6 +163,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    *
    * @param reads The reads to use as evidence.
    * @param ploidy The assumed copy number at each site.
+   * @param generateGvcf If true, generate gVCF base pair resolution model,
+   *   if false, generate variant site model only.
    * @param optDesiredPartitionCount Optional parameter for setting the number
    *   of partitions desired after the shuffle region join. Defaults to None.
    * @param optPhredThreshold An optional threshold that discards all variants
@@ -171,6 +176,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    */
   def discoverAndCall(reads: AlignmentRecordRDD,
                       ploidy: Int,
+                      generateGvcf: Boolean,
                       optDesiredPartitionCount: Option[Int] = None,
                       optPhredThreshold: Option[Int] = None,
                       optMinObservations: Option[Int] = None,
@@ -189,7 +195,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
       optMinObservations = optMinObservations)
 
     // "force" call the variants we have discovered in the input reads
-    call(reads, variants, ploidy,
+    call(reads, variants, ploidy, generateGvcf,
       optDesiredPartitionCount = optDesiredPartitionCount,
       optDesiredPartitionSize = optDesiredPartitionSize)
   }
@@ -200,16 +206,19 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    * @param readAndVariants A tuple pairing a read with the variants it covers.
    * @param copyNumber The number of copies of this locus expected to exist at
    *   this site.
+   * @param generateGvcf If true, generate gVCF base pair resolution model,
+   *   if false, generate variant site model only.
    * @return Returns an iterable collection of (Variant, Observation) pairs.
    */
   private[genotyping] def readToObservations(
     readAndVariants: (AlignmentRecord, Iterable[Variant]),
-    copyNumber: Int): Iterable[(Variant, Observation)] = ObserveRead.time {
+    copyNumber: Int,
+    generateGvcf: Boolean): Iterable[(Variant, Observation)] = ObserveRead.time {
 
     // unpack tuple
     val (read, variants) = readAndVariants
 
-    if (variants.isEmpty) {
+    if (!generateGvcf && variants.isEmpty) {
       Iterable.empty
     } else {
       try {
@@ -233,7 +242,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
         }
 
         // process these intersections
-        ProcessIntersections.time {
+        val variantObservations = ProcessIntersections.time {
           val obsMap = intersection.flatMap(kv => {
             val (variant, observed) = kv
 
@@ -242,7 +251,6 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
             // - if insertion, look for observation matching insert tail
             //
             // FIXME: if we don't see the variant, take the first thing and invert it
-
             if (observed.isEmpty) {
               None
             } else if (isSnp(variant) || isDeletion(variant)) {
@@ -274,6 +282,36 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
 
           obsMap
         }
+
+        // if we are generating a gvcf, add in the reference observations
+        val refObservations = if (generateGvcf) {
+          val variantRegions = variants.map(ReferenceRegion(_))
+
+          observations.flatMap(obsT => {
+            val (rr, _, obs) = obsT
+
+            // does this overlap any variants we've seen? 
+            // if yes, it is already accounted for there
+            if (variantRegions.forall(r => !r.overlaps(rr))) {
+              val nonRefObs = if (obs.isRef) {
+                obs.invert
+              } else {
+                obs
+              }
+              Some((Variant.newBuilder
+                .setContigName(rr.referenceName)
+                .setStart(rr.start)
+                .setEnd(rr.end)
+                .build(), nonRefObs))
+            } else {
+              None
+            }
+          })
+        } else {
+          Seq.empty
+        }
+
+        refObservations ++ variantObservations
       } catch {
         case t: Throwable => ProcessException.time {
           log.error("Processing read %s failed with exception %s. Skipping...".format(
@@ -305,13 +343,16 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    * @param rdd An RDD containing the product of joining variants against reads
    *   and then grouping by the reads.
    * @param ploidy The assumed copy number at each site.
+   * @param generateGvcf If true, generate gVCF base pair resolution model,
+   *   if false, generate variant site model only.
    * @return Returns an RDD of (Variant, Observation) pairs.
    */
   private[genotyping] def readsToObservations(
     rdd: RDD[(AlignmentRecord, Iterable[Variant])],
-    ploidy: Int): RDD[(Variant, Observation)] = ObserveReads.time {
+    ploidy: Int,
+    generateGvcf: Boolean): RDD[(Variant, Observation)] = ObserveReads.time {
 
-    rdd.flatMap(readToObservations(_, ploidy))
+    rdd.flatMap(readToObservations(_, ploidy, generateGvcf))
       .reduceByKey(_.merge(_))
   }
 

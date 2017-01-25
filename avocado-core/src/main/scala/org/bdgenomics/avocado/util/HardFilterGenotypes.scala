@@ -115,6 +115,8 @@ private[avocado] trait HardFilterGenotypesArgs extends Serializable {
    * Set to a negative value to omit.
    */
   var maxIndelDepth: Int
+
+  var generateGvcf: Boolean
 }
 
 /**
@@ -138,11 +140,13 @@ private[avocado] object HardFilterGenotypes extends Serializable {
 
     // flat map the filters over the genotype rdd
     val minQuality = args.minQuality
+    val emitGvcf = args.generateGvcf
     grdd.transform(rdd => {
       rdd.flatMap(filterGenotype(_,
         minQuality,
         snpFilters,
-        indelFilters))
+        indelFilters,
+        emitGvcf))
     })
   }
 
@@ -239,11 +243,14 @@ private[avocado] object HardFilterGenotypes extends Serializable {
    *
    * @param genotype call to evaluate.
    * @param minQuality The minimum genotype quality to emit.
+   * @param emitGvcf True if we are emitting a gVCF and should not filter out
+   *   calls.
    * @return Returns false for calls that are hom ref and/or low quality.
    */
   def emitGenotypeFilter(genotype: Genotype,
-                         minQuality: Int): Boolean = {
-    filterRefCalls(genotype) && filterQuality(genotype, minQuality)
+                         minQuality: Int,
+                         emitGvcf: Boolean): Boolean = {
+    emitGvcf || (filterRefCalls(genotype) && filterQuality(genotype, minQuality))
   }
 
   /**
@@ -406,6 +413,10 @@ private[avocado] object HardFilterGenotypes extends Serializable {
       genotype.getVariant.getAlternateAllele.length == 1
   }
 
+  private def siteIsModel(genotype: Genotype): Boolean = {
+    genotype.getVariant.getAlternateAllele == null
+  }
+
   /**
    * Filters genotype for emission, and applies hard filters.
    *
@@ -413,6 +424,8 @@ private[avocado] object HardFilterGenotypes extends Serializable {
    * @param minQuality The minimum genotype quality to emit.
    * @param snpFilters Collection of filters to apply to emitted SNPs.
    * @param indelFilters Collection of filters to apply to emitted INDELs.
+   * @param emitGvcf True if we are emitting a gVCF and should not filter out
+   *   calls.
    * @return If genotype is high enough quality to emit, a hard filtered
    *   genotype.
    */
@@ -420,17 +433,24 @@ private[avocado] object HardFilterGenotypes extends Serializable {
     genotype: Genotype,
     minQuality: Int,
     snpFilters: Iterable[Genotype => Option[String]],
-    indelFilters: Iterable[Genotype => Option[String]]): Option[Genotype] = {
+    indelFilters: Iterable[Genotype => Option[String]],
+    emitGvcf: Boolean): Option[Genotype] = {
 
     // first, apply emission filters
-    val optGenotype = Some(genotype).filter(emitGenotypeFilter(_, minQuality))
+    val optGenotype = Some(genotype).filter(emitGenotypeFilter(_,
+      minQuality,
+      emitGvcf))
 
     // then, check whether we are a snp or indel and apply hard filters
     optGenotype.map(gt => {
-      if (siteIsSnp(gt)) {
-        hardFilterGenotype(gt, snpFilters)
+      if (siteIsModel(gt)) {
+        gt
       } else {
-        hardFilterGenotype(gt, indelFilters)
+        if (siteIsSnp(gt)) {
+          hardFilterGenotype(gt, snpFilters)
+        } else {
+          hardFilterGenotype(gt, indelFilters)
+        }
       }
     })
   }

@@ -19,9 +19,29 @@ package org.bdgenomics.avocado.genotyping
 
 import org.bdgenomics.adam.models.ReferenceRegion
 import org.bdgenomics.formats.avro.{ Genotype, Variant }
+import scala.math.exp
 
 private[avocado] case class ObservedLocus(sampleId: String,
                                           genotypes: Iterable[Genotype] = Iterable.empty) {
+
+  private val genotypeStates = genotypes.flatMap(gt => {
+    // is this a gvcf record? if so, use the nonref likelihoods
+    if (gt.getVariant.getAlternateAllele == null) {
+      val nonRefLikelihoods = gt.getNonReferenceLikelihoods
+      if (nonRefLikelihoods.size == 0) {
+        None
+      } else {
+        Some(nonRefLikelihoods)
+      }
+    } else {
+      val likelihoods = gt.getGenotypeLikelihoods
+      if (likelihoods.size == 0) {
+        None
+      } else {
+        Some(likelihoods)
+      }
+    }
+  })
 
   def avgCall: (Double, Int) = {
     ???

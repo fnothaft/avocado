@@ -17,7 +17,9 @@
  */
 package org.bdgenomics.avocado.genotyping
 
+import org.apache.spark.rdd.MetricsContext._
 import org.apache.spark.rdd.RDD
+import org.bdgenomics.adam.models.ReferenceRegion
 import org.bdgenomics.adam.rdd.variant.{ GenotypeRDD, VariantRDD }
 import org.bdgenomics.formats.avro.{
   Genotype,
@@ -60,7 +62,7 @@ private[avocado] object JointGenotyper extends Serializable {
                 callQuality: Int = 30,
                 iterations: Int = 10): GenotypeRDD = {
 
-    @tailrec def iterateFrequencies(
+    /*@tailrec def iterateFrequencies(
       iteration: Int,
       frequencies: RDD[(Variant, Double)]): GenotypeRDD = {
       if (iteration == 0) {
@@ -70,13 +72,10 @@ private[avocado] object JointGenotyper extends Serializable {
         iterateFrequencies(iteration - 1,
           estimateAlleleFrequencies(estimatedGenotypes))
       }
-    }
+    }*/
 
-    // initialize allele frequencies
-    val initialFrequencies = initializeSites(variants,
-      genotypes.samples.map(_.getSampleId))
-
-    iterateFrequencies(iterations, initialFrequencies)
+    //iterateFrequencies(iterations, initialFrequencies)
+    ???
   }
 
   /**
@@ -133,41 +132,74 @@ private[avocado] object JointGenotyper extends Serializable {
       genotypes.sequences)
   }
 
-  private[genotyping] def initializeSites(
-    variants: VariantRDD,
-    samples: Seq[String]): RDD[(Variant, Double)] = {
-    ???
+  private[genotyping] def sitesToLoci(
+    variants: VariantRDD): RDD[(ReferenceRegion, Locus)] = {
+    variants.rdd
+      .keyBy(v => ReferenceRegion(v))
+      .groupByKey()
+      .mapValues(v => Locus(v))
   }
 
-  private[genotyping] def estimateGenotypes(
-    frequencies: RDD[(Variant, Double)],
-    genotypes: GenotypeRDD): RDD[(Variant, Double)] = {
-    ???
+  private[genotyping] def observeLoci(
+    loci: RDD[(ReferenceRegion, Locus)],
+    genotypes: GenotypeRDD): RDD[(ReferenceRegion, ObservedLocus)] = {
+
+    // map of sample ids
+    val samples = genotypes.samples.map(_.getSampleId)
+
+    // fill in all loci, even if they haven't been observed
+    val locusNoObs = loci.flatMap(p => samples.map(s => ((p._1, s), None)))
+
+    // map all genotypes down
+    val gtsByLocus = genotypes.rdd
+      .groupBy(gt => (ReferenceRegion(gt), gt.getSampleId))
+
+    // join together
+    locusNoObs.leftOuterJoin(gtsByLocus)
+      .map(p => {
+        val ((locus, sample), (_, optGts)) = p
+
+        optGts.fold((locus, ObservedLocus(sample)))(gts => {
+          (locus, ObservedLocus(sample, genotypes = gts))
+        })
+      })
   }
 
-  private[genotyping] def estimateGenotypeWithPrior(
-    genotype: Genotype,
-    variant: Variant,
-    frequency: Double): (Variant, Double) = {
-    ???
+  private[genotyping] def initializeLoci(
+    loci: RDD[(ReferenceRegion, ObservedLocus)]): RDD[(ReferenceRegion, Double)] = {
+
+    loci.mapValues(_.avgCall)
+      .reduceByKey((p1, p2) => {
+        (p1._1 + p2._1, p1._2 + p2._2)
+      }).mapValues(p => {
+        p._1 / p._2.toDouble
+      })
   }
 
   private[genotyping] def estimateAlleleFrequencies(
-    estimatedGenotypes: RDD[(Variant, Double)]): RDD[(Variant, Double)] = {
-    ???
+    frequencies: RDD[(ReferenceRegion, Double)],
+    loci: RDD[(ReferenceRegion, ObservedLocus)]): RDD[(ReferenceRegion, Double)] = {
+    frequencies.join(loci)
+      .map(kv => {
+        val (rr, (maf, locus)) = kv
+        (rr, locus.estimateRefCalls(maf))
+      }).reduceByKey((p1, p2) => {
+        (p1._1 + p2._1, p1._2 + p2._2)
+      }).mapValues(p => {
+        p._1 / p._2.toDouble
+      })
   }
 
   private[genotyping] def finalizeCalls(
-    frequencies: RDD[(Variant, Double)],
-    genotypes: GenotypeRDD,
-    callQuality: Int): GenotypeRDD = {
-    ???
-  }
-
-  private[genotyping] def finalizeCall(
-    genotype: Genotype,
-    variant: Variant,
-    frequency: Double): Genotype = {
-    ???
+    frequencies: RDD[(ReferenceRegion, Double)],
+    loci: RDD[(ReferenceRegion, Locus)],
+    observedLoci: RDD[(ReferenceRegion, ObservedLocus)],
+    callQuality: Int): RDD[Genotype] = {
+    frequencies.join(loci)
+      .join(observedLoci)
+      .flatMap(kv => {
+        val (_, ((maf, locus), observedLocus)) = kv
+        observedLocus.finalize(maf, callQuality, locus.variants)
+      })
   }
 }

@@ -18,22 +18,7 @@
 package org.bdgenomics.avocado.genotyping
 
 import org.bdgenomics.adam.models.ReferenceRegion
-import org.bdgenomics.formats.avro.{ Genotype, Variant }
+import org.bdgenomics.formats.avro.Variant
 
-private[avocado] case class ObservedLocus(sampleId: String,
-                                          genotypes: Iterable[Genotype] = Iterable.empty) {
-
-  def avgCall: (Double, Int) = {
-    ???
-  }
-
-  def estimateRefCalls(maf: Double): (Double, Int) = {
-    ???
-  }
-
-  def finalize(maf: Double,
-               callQuality: Int,
-               variants: Iterable[Variant]): Iterable[Genotype] = {
-    ???
-  }
+private[avocado] case class Locus(variants: Iterable[Variant]) {
 }

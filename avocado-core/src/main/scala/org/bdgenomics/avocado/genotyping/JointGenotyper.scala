@@ -62,20 +62,42 @@ private[avocado] object JointGenotyper extends Serializable {
                 callQuality: Int = 30,
                 iterations: Int = 10): GenotypeRDD = {
 
-    /*@tailrec def iterateFrequencies(
-      iteration: Int,
-      frequencies: RDD[(Variant, Double)]): GenotypeRDD = {
-      if (iteration == 0) {
-        finalizeCalls(frequencies, genotypes, callQuality)
-      } else {
-        val estimatedGenotypes = estimateGenotypes(frequencies, genotypes)
-        iterateFrequencies(iteration - 1,
-          estimateAlleleFrequencies(estimatedGenotypes))
-      }
-    }*/
+    // extract loci to call
+    val loci = sitesToLoci(variants)
+      .cache
 
-    //iterateFrequencies(iterations, initialFrequencies)
-    ???
+    // populate observed loci
+    val observedLoci: RDD[(ReferenceRegion, ObservedLocus)] =
+      observeLoci(loci, genotypes)
+        .cache
+
+    // initialize MAF estimates
+    val initialFrequencies = initializeLoci(observedLoci)
+
+    @tailrec def iterateFrequencies(
+      iteration: Int,
+      frequencies: RDD[(ReferenceRegion, Double)]): RDD[Genotype] = {
+      if (iteration == 0) {
+        finalizeCalls(frequencies,
+          loci,
+          observedLoci,
+          callQuality)
+      } else {
+        iterateFrequencies(iteration - 1,
+          estimateAlleleFrequencies(frequencies,
+            observedLoci))
+      }
+    }
+
+    // loop and estimate MAFs and fill in genotypes
+    val jointGenotypes = iterateFrequencies(iterations,
+      initialFrequencies)
+
+    // unpersist loci
+    loci.unpersist()
+    observedLoci.unpersist()
+
+    genotypes.copy(rdd = jointGenotypes)
   }
 
   /**

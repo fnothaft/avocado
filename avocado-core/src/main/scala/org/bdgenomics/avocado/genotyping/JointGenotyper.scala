@@ -25,6 +25,7 @@ import org.bdgenomics.formats.avro.{
   Variant
 }
 import scala.annotation.tailrec
+import scala.collection.JavaConversions._
 
 /**
  * Genotypes samples by calculating a posterior across multiple samples.
@@ -72,7 +73,8 @@ private[avocado] object JointGenotyper extends Serializable {
     }
 
     // initialize allele frequencies
-    val initialFrequencies = initializeSites(variants)
+    val initialFrequencies = initializeSites(variants,
+      genotypes.samples.map(_.getSampleId))
 
     iterateFrequencies(iterations, initialFrequencies)
   }
@@ -113,11 +115,27 @@ private[avocado] object JointGenotyper extends Serializable {
 
   private[genotyping] def filterSites(genotypes: GenotypeRDD,
                                       emitQuality: Int): VariantRDD = {
-    ???
+    VariantRDD(
+      genotypes.rdd
+        .flatMap(gt => {
+          if (!gt.getAlleles.forall(a => a == GenotypeAllele.REF) &&
+            gt.getGenotypeQuality > emitQuality) {
+            Some(Variant.newBuilder
+              .setStart(gt.getStart)
+              .setEnd(gt.getEnd)
+              .setReferenceAllele(gt.getVariant.getReferenceAllele)
+              .setAlternateAllele(gt.getVariant.getAlternateAllele)
+              .build)
+          } else {
+            None
+          }
+        }).distinct,
+      genotypes.sequences)
   }
 
   private[genotyping] def initializeSites(
-    variants: VariantRDD): RDD[(Variant, Double)] = {
+    variants: VariantRDD,
+    samples: Seq[String]): RDD[(Variant, Double)] = {
     ???
   }
 

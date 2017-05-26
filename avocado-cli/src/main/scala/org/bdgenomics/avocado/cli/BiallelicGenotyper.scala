@@ -172,6 +172,10 @@ class BiallelicGenotyperArgs extends Args4jBase with ADAMSaveAnyArgs with Parque
     name = "-min_hom_indel_allelic_fraction",
     usage = "Minimum (alt) allelic fraction for calling a hom INDEL. Default is 0.666. Set to a negative value to omit.")
   var minHomIndelAltAllelicFraction: Float = 0.666f
+  @Args4jOption(required = false,
+    name = "-score_all_sites",
+    usage = "If provided, scores all sites, even non-variant sites. Emits a gVCF styled output.")
+  var scoreAllSites = false
 
   // required by HardFilterGenotypesArgs
   var maxSnpPhredStrandBias: Float = -1.0f
@@ -217,6 +221,7 @@ class BiallelicGenotyper(
     val genotypes = Option(args.variantsToCall).fold({
       Biallelic.discoverAndCall(filteredReads,
         args.ploidy,
+        args.scoreAllSites,
         optDesiredPartitionCount = optDesiredPartitionCount,
         optPhredThreshold = Some(args.minPhredForDiscovery),
         optMinObservations = Some(args.minObservationsForDiscovery),
@@ -230,6 +235,7 @@ class BiallelicGenotyper(
       Biallelic.call(filteredReads,
         variants,
         args.ploidy,
+        args.scoreAllSites,
         optDesiredPartitionCount = optDesiredPartitionCount,
         optDesiredPartitionSize = optDesiredPartitionSize,
         optDesiredMaxCoverage = optDesiredMaxCoverage)

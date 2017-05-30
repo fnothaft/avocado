@@ -72,9 +72,10 @@ private[genotyping] case class SummarizedObservation(isRef: Boolean,
 
   /**
    * @param scores The previously scored observations.
+   * @param ploidy The copy number of this call.
    * @return Returns a fully scored observation.
    */
-  def toObservation(scores: Seq[ScoredObservation]): Observation = {
+  def toObservation(scores: Seq[ScoredObservation], ploidy: Int = 2): Observation = {
     val optScore = scores.find(score => {
       score.isRef == isRef &&
         score.forwardStrand == forwardStrand &&
@@ -85,12 +86,16 @@ private[genotyping] case class SummarizedObservation(isRef: Boolean,
     assert(optScore.isDefined)
     val score = optScore.get
 
+    def genArray(array: Array[Double]): Array[Double] = {
+      Option(array).getOrElse(Array.fill(ploidy + 1) { 0.0 })
+    }
+
     Observation(score.alleleForwardStrand,
       score.otherForwardStrand,
       score.squareMapQ,
-      score.referenceLogLikelihoods,
-      score.alleleLogLikelihoods,
-      score.otherLogLikelihoods,
+      genArray(score.referenceLogLikelihoods),
+      genArray(score.alleleLogLikelihoods),
+      genArray(score.otherLogLikelihoods),
       score.alleleCoverage,
       score.otherCoverage,
       score.totalCoverage,

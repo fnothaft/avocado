@@ -362,23 +362,17 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
         .as("otherForwardStrand"),
       aggregatedObservationsDf("squareMapQ"), {
         val fields = (0 to ploidy).map(i => {
-          when(aggregatedObservationsDf("referenceLogLikelihoods%d".format(i)).isNotNull,
-            aggregatedObservationsDf("referenceLogLikelihoods%d".format(i)))
-            .otherwise(0.0)
+          aggregatedObservationsDf("referenceLogLikelihoods%d".format(i))
         })
         array(fields: _*).as("referenceLogLikelihoods")
       }, {
         val fields = (0 to ploidy).map(i => {
-          when(aggregatedObservationsDf("alleleLogLikelihoods%d".format(i)).isNotNull,
-            aggregatedObservationsDf("alleleLogLikelihoods%d".format(i)))
-            .otherwise(0.0)
+          aggregatedObservationsDf("alleleLogLikelihoods%d".format(i))
         })
         array(fields: _*).as("alleleLogLikelihoods")
       }, {
         val fields = (0 to ploidy).map(i => {
-          when(aggregatedObservationsDf("otherLogLikelihoods%d".format(i)).isNotNull,
-            aggregatedObservationsDf("otherLogLikelihoods%d".format(i)))
-            .otherwise(0.0)
+          aggregatedObservationsDf("otherLogLikelihoods%d".format(i))
         })
         array(fields: _*).as("otherLogLikelihoods")
       },

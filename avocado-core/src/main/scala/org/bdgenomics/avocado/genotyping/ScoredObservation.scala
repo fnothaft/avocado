@@ -23,7 +23,6 @@ import org.apache.spark.sql.{
   Dataset,
   SQLContext
 }
-import org.apache.spark.sql.functions._
 import org.bdgenomics.adam.util.PhredUtils
 
 /**
@@ -54,7 +53,7 @@ private[genotyping] object ScoredObservation extends Serializable {
       mapSuccessProbability,
       optQuality)
 
-    val zeros: Array[Double] = null
+    val zeros = Array.fill(ploidy + 1)({ 0.0 })
     val (referenceLikelihoods, alleleLikelihoods, otherLikelihoods) = if (isOther) {
       (zeros, zeros, altLikelihoods)
     } else {
@@ -155,16 +154,13 @@ private[genotyping] object ScoredObservation extends Serializable {
         scoreDf("alleleForwardStrand"),
         scoreDf("otherForwardStrand"),
         scoreDf("squareMapQ")) ++ (0 to ploidy).map(p => {
-          when(scoreDf("referenceLogLikelihoods").isNotNull,
-            scoreDf("referenceLogLikelihoods").getItem(p))
+          scoreDf("referenceLogLikelihoods").getItem(p)
             .as("referenceLogLikelihoods%d".format(p))
         }) ++ (0 to ploidy).map(p => {
-          when(scoreDf("alleleLogLikelihoods").isNotNull,
-            scoreDf("alleleLogLikelihoods").getItem(p))
+          scoreDf("alleleLogLikelihoods").getItem(p)
             .as("alleleLogLikelihoods%d".format(p))
         }) ++ (0 to ploidy).map(p => {
-          when(scoreDf("otherLogLikelihoods").isNotNull,
-            scoreDf("otherLogLikelihoods").getItem(p))
+          scoreDf("otherLogLikelihoods").getItem(p)
             .as("otherLogLikelihoods%d".format(p))
         }) ++ Seq(scoreDf("alleleCoverage"),
           scoreDf("otherCoverage"),

@@ -23,7 +23,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.types.IntegerType
-import org.bdgenomics.adam.models.ReferenceRegion
+import org.bdgenomics.adam.models.{ ReferenceRegion, SequenceDictionary }
 import org.bdgenomics.adam.rdd.GenomeBins
 import org.bdgenomics.adam.rdd.read.AlignmentRecordRDD
 import org.bdgenomics.adam.rdd.variant.{
@@ -106,7 +106,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     }
 
     // score variants and get observations
-    val observationRdd = readsToObservations(joinedRdd, ploidy)
+    val observationRdd = readsToObservations(joinedRdd, ploidy, reads.sequences)
 
     // genotype observations
     val genotypeRdd = observationsToGenotypes(observationRdd, samples.head)
@@ -166,11 +166,13 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    * @param readAndVariants A tuple pairing a read with the variants it covers.
    * @param copyNumber The number of copies of this locus expected to exist at
    *   this site.
+   * @param contigMap A map between contig names and indices.
    * @return Returns an iterable collection of (Variant, Observation) pairs.
    */
   private[genotyping] def readToObservations(
     readAndVariants: (AlignmentRecord, Iterable[Variant]),
-    copyNumber: Int): Iterable[(DiscoveredVariant, SummarizedObservation)] = ObserveRead.time {
+    copyNumber: Int,
+    contigMap: Map[String, Int]): Iterable[(IndexedVariant, SummarizedObservation)] = ObserveRead.time {
 
     // unpack tuple
     val (read, variants) = readAndVariants
@@ -179,6 +181,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
       Iterable.empty
     } else {
       try {
+
+        val contigIdx = contigMap(read.getContigName)
 
         // observe this read
         val observations = Observer.observeRead(read, copyNumber)
@@ -215,27 +219,27 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
               val insObserved = observed.filter(_._2 == insAllele)
               if (observed.size == 2 &&
                 insObserved.size == 1) {
-                Some((DiscoveredVariant(variant),
+                Some((IndexedVariant(variant, contigIdx),
                   insObserved.head._3))
               } else if (observed.forall(_._3.isRef)) {
-                Some((DiscoveredVariant(variant), observed.head._3.asRef))
+                Some((IndexedVariant(variant, contigIdx), observed.head._3.asRef))
               } else {
-                Some((DiscoveredVariant(variant), observed.head._3.nullOut))
+                Some((IndexedVariant(variant, contigIdx), observed.head._3.nullOut))
               }
             } else {
               val (_, allele, obs) = observed.head
               if (observed.count(_._2.nonEmpty) == 1 &&
                 allele == variant.getAlternateAllele) {
                 if (isDeletion(variant)) {
-                  Some((DiscoveredVariant(variant), obs.asAlt))
+                  Some((IndexedVariant(variant, contigIdx), obs.asAlt))
                 } else {
-                  Some((DiscoveredVariant(variant), obs))
+                  Some((IndexedVariant(variant, contigIdx), obs))
                 }
               } else if (!obs.isRef ||
                 observed.size != variant.getReferenceAllele.length) {
-                Some((DiscoveredVariant(variant), obs.nullOut))
+                Some((IndexedVariant(variant, contigIdx), obs.nullOut))
               } else {
-                Some((DiscoveredVariant(variant), obs.asRef))
+                Some((IndexedVariant(variant, contigIdx), obs.asRef))
               }
             }
           })
@@ -277,18 +281,24 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    */
   private[genotyping] def readsToObservations(
     rdd: RDD[(AlignmentRecord, Iterable[Variant])],
-    ploidy: Int): RDD[(Variant, Observation)] = ObserveReads.time {
+    ploidy: Int,
+    sequences: SequenceDictionary): RDD[(Variant, Observation)] = ObserveReads.time {
 
-    val observations = rdd.flatMap(readToObservations(_, ploidy))
+    val contigMap = sequences.records.map(r => r.name).zipWithIndex.toMap
+
+    val observations = rdd.flatMap(readToObservations(_, ploidy, contigMap))
 
     // convert to dataframe
     val sqlContext = SQLContext.getOrCreate(rdd.context)
     import sqlContext.implicits._
+    val contigNameDf = sqlContext.createDataFrame(contigMap.toSeq)
+    val contigDf = contigNameDf.select(contigNameDf("_1").as("contigName"),
+      contigNameDf("_2").as("contigIdx"))
     val observationsDf = sqlContext.createDataFrame(observations)
 
     // flatten schema
     val flatFields = Seq(
-      observationsDf("_1.contigName").as("contigName"),
+      observationsDf("_1.contigIdx").as("contigIdx"),
       observationsDf("_1.start").as("start"),
       observationsDf("_1.referenceAllele").as("referenceAllele"),
       observationsDf("_1.alternateAllele").as("alternateAllele"),
@@ -329,11 +339,14 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
         sum("otherCoverage").as("otherCoverage"),
         sum("totalCoverage").as("totalCoverage"),
         first("isRef").as("isRef"))
-    val aggregatedObservationsDf = joinedObservationsDf.groupBy("contigName",
+    val aggregatedDf = joinedObservationsDf.groupBy("contigIdx",
       "start",
       "referenceAllele",
       "alternateAllele")
       .agg(aggCols.head, aggCols.tail: _*)
+
+    // recover the contig names
+    val aggregatedObservationsDf = aggregatedDf.join(contigDf, "contigIdx")
 
     // re-nest the output
     val firstField = struct(aggregatedObservationsDf("contigName"),

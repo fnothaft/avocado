@@ -99,21 +99,25 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
   }
 
   test("scoring read that overlaps no variants should return empty observations") {
-    val perfectScores = BiallelicGenotyper.readToObservations((perfectRead, Iterable.empty), 2)
+    val perfectScores = BiallelicGenotyper.readToObservations((perfectRead, Iterable.empty),
+      2,
+      Map(("1", 0)))
     assert(perfectScores.isEmpty)
 
-    val snpScores = BiallelicGenotyper.readToObservations((snpRead, Iterable.empty), 2)
+    val snpScores = BiallelicGenotyper.readToObservations((snpRead, Iterable.empty),
+      2,
+      Map(("1", 0)))
     assert(snpScores.isEmpty)
   }
 
   sparkTest("score snp in a read with no evidence of the snp") {
     val scores = BiallelicGenotyper.readToObservations(
-      (perfectRead, Iterable(snp)), 2)
+      (perfectRead, Iterable(snp)), 2, Map(("1", 0)))
     assert(scores.size === 1)
 
     val (snpVariant, snpSumObservation) = scores.head
     val snpObservation = snpSumObservation.toObservation(summaryObservations)
-    assert(snpVariant.toVariant === snp)
+    assert(snpVariant.toVariant(Seq("1")) === snp)
     assert(snpObservation.squareMapQ === 50 * 50)
     assert(snpObservation.alleleCoverage === 0)
     assert(snpObservation.otherCoverage === 1)
@@ -127,12 +131,12 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
 
   sparkTest("score snp in a read with evidence of the snp") {
     val scores = BiallelicGenotyper.readToObservations(
-      (snpRead, Iterable(snp)), 2)
+      (snpRead, Iterable(snp)), 2, Map(("1", 0)))
     assert(scores.size === 1)
 
     val (snpVariant, snpSumObservation) = scores.head
     val snpObservation = snpSumObservation.toObservation(summaryObservations)
-    assert(snpVariant.toVariant === snp)
+    assert(snpVariant.toVariant(Seq("1")) === snp)
     assert(snpObservation.squareMapQ === 40 * 40)
     assert(snpObservation.alleleCoverage === 1)
     assert(snpObservation.otherCoverage === 0)
@@ -351,7 +355,7 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
     assert(variants.size === 1)
 
     val obs = BiallelicGenotyper.readToObservations((reads.rdd.first,
-      variants.toIterable), 2)
+      variants.toIterable), 2, Map(("1", 0)))
 
     assert(obs.size === 1)
   }

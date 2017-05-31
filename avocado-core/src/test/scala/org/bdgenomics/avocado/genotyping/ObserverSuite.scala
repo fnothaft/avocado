@@ -61,7 +61,8 @@ class ObserverSuite extends AvocadoFunSuite {
            m: Int,
            mapP: Double,
            baseP: Double): Double = {
-    log(eps(m - g, mapP, baseP) + invEps(g, mapP, baseP))
+    (log(eps(m - g, mapP, baseP) + invEps(g, mapP, baseP)) *
+      BiallelicGenotyper.FIXED_POINT_SCALER)
   }
 
   sparkTest("generate observations for a sequence match under diploid model") {
@@ -104,9 +105,12 @@ class ObserverSuite extends AvocadoFunSuite {
     })
     (0 until 4).zip(Array(0.99, 0.999, 0.9999, 0.99999)).foreach(p => {
       val (idx, baseQ) = p
-      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0), logL(0, 2, baseQ, 0.99999)))
-      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1), logL(1, 2, baseQ, 0.99999)))
-      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2), logL(2, 2, baseQ, 0.99999)))
+      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0),
+        logL(0, 2, baseQ, 0.99999).toInt))
+      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1),
+        logL(1, 2, baseQ, 0.99999).toInt))
+      assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2),
+        logL(2, 2, baseQ, 0.99999).toInt))
     })
   }
 
@@ -157,13 +161,19 @@ class ObserverSuite extends AvocadoFunSuite {
     (0 until 3).zip(Array(0.99, 1.0 - sqrt(0.001 * 0.0001), 0.99999)).foreach(p => {
       val (idx, baseQ) = p
       if (obs(idx)._1._2.size != 1) {
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(0), logL(0, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(1), logL(1, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(2), logL(2, 2, baseQ, 0.99999)))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(0),
+          logL(0, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(1),
+          logL(1, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(2),
+          logL(2, 2, baseQ, 0.99999).toInt))
       } else {
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0), logL(0, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1), logL(1, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2), logL(2, 2, baseQ, 0.99999)))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0),
+          logL(0, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1),
+          logL(1, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2),
+          logL(2, 2, baseQ, 0.99999).toInt))
       }
     })
   }
@@ -215,13 +225,19 @@ class ObserverSuite extends AvocadoFunSuite {
     (0 until 5).zip(Array(0.99, 0.999, 1.0, 0.9999, 0.99999)).foreach(p => {
       val (idx, baseQ) = p
       if (obs(idx)._1._2.size != 1) {
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(0), logL(0, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(1), logL(1, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(2), logL(2, 2, baseQ, 0.99999)))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(0),
+          logL(0, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(1),
+          logL(1, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.alleleLogLikelihoods(2),
+          logL(2, 2, baseQ, 0.99999).toInt))
       } else {
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0), logL(0, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1), logL(1, 2, baseQ, 0.99999)))
-        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2), logL(2, 2, baseQ, 0.99999)))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(0),
+          logL(0, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(1),
+          logL(1, 2, baseQ, 0.99999).toInt))
+        assert(MathUtils.fpEquals(obs(idx)._2.referenceLogLikelihoods(2),
+          logL(2, 2, baseQ, 0.99999).toInt))
       }
     })
   }

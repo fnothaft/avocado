@@ -48,12 +48,12 @@ private[genotyping] object ScoredObservation extends Serializable {
             mapQ: Int,
             ploidy: Int): ScoredObservation = {
     val mapSuccessProbability = PhredUtils.phredToSuccessProbability(mapQ)
-    val (altLikelihoods, nonRefLikelihoods) = Observer.likelihoods(
+    val altLikelihoods = Observer.likelihoods(
       ploidy,
       mapSuccessProbability,
-      optQuality)
+      optQuality)._1.map(d => (d * BiallelicGenotyper.FIXED_POINT_SCALER).toInt)
 
-    val zeros = Array.fill(ploidy + 1)({ 0.0 })
+    val zeros = Array.fill(ploidy + 1)({ 0 })
     val (referenceLikelihoods, alleleLikelihoods, otherLikelihoods) = if (isOther) {
       (zeros, zeros, altLikelihoods)
     } else {
@@ -202,9 +202,9 @@ private[genotyping] case class ScoredObservation(
     alleleForwardStrand: Int,
     otherForwardStrand: Int,
     squareMapQ: Double,
-    referenceLogLikelihoods: Array[Double],
-    alleleLogLikelihoods: Array[Double],
-    otherLogLikelihoods: Array[Double],
+    referenceLogLikelihoods: Array[Int],
+    alleleLogLikelihoods: Array[Int],
+    otherLogLikelihoods: Array[Int],
     alleleCoverage: Int,
     otherCoverage: Int,
     totalCoverage: Int) {

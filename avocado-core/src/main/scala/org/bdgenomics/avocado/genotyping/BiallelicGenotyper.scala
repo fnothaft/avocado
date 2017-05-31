@@ -67,6 +67,10 @@ import scala.math.{ exp, log => mathLog, log10, sqrt }
  */
 private[avocado] object BiallelicGenotyper extends Serializable with Logging {
 
+  private val FIXED_POINT_POSITION = 20
+  private[genotyping] val FIXED_POINT_SCALER = (2 << FIXED_POINT_POSITION).toFloat
+  private val TEN_DIV_LOG10 = 10.0 / mathLog(10.0)
+
   /**
    * Force calls variants from the input read dataset.
    *
@@ -411,8 +415,6 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     rdd.map(observationToGenotype(_, sample))
   }
 
-  private val TEN_DIV_LOG10 = 10.0 / mathLog(10.0)
-
   /**
    * @param logLikelihood The log likelihoods of an observed call.
    * @return Returns a tuple containing the (number of alt, ref, and otheralt
@@ -424,13 +426,13 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     val states = obs.referenceLogLikelihoods.size
     val scoreArray = new Array[Double](states)
 
-    def blend(array1: Array[Double],
-              array2: Array[Double]) {
+    def blend(array1: Array[Int],
+              array2: Array[Int]) {
       var idx1 = 0
       var idx2 = states - 1
 
       while (idx1 < states) {
-        scoreArray(idx1) = array1(idx1) + array2(idx2)
+        scoreArray(idx1) = (array1(idx1) + array2(idx2)).toDouble
         idx1 += 1
         idx2 -= 1
       }
@@ -504,7 +506,9 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
         startSecond)
 
     // phred quality is 10 * (max - second) / log10
-    val quality = TEN_DIV_LOG10 * (maxLikelihood - secondLikelihood)
+    val quality = (TEN_DIV_LOG10 *
+      (maxLikelihood - secondLikelihood).toDouble /
+      FIXED_POINT_SCALER)
 
     (state, quality)
   }
@@ -556,13 +560,14 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     val likelihoods = obs.alleleLogLikelihoods.length
     val gl = new Array[java.lang.Float](likelihoods)
     val ol = new Array[java.lang.Float](likelihoods)
-    def mergeArrays(a1: Array[Double],
-                    a2: Array[Double],
+    def mergeArrays(a1: Array[Int],
+                    a2: Array[Int],
                     oa: Array[java.lang.Float]) {
+
       var idx1 = 0
       var idx2 = likelihoods - 1
       while (idx1 < likelihoods) {
-        oa(idx1) = (a1(idx1) + a2(idx2)).toFloat
+        oa(idx1) = (a1(idx1) + a2(idx2)).toFloat / FIXED_POINT_SCALER
         idx1 += 1
         idx2 -= 1
       }

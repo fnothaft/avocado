@@ -76,7 +76,7 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
 
   test("properly handle haploid genotype state") {
     val (state, qual) = BiallelicGenotyper.genotypeStateAndQuality(
-      Array(5.0, 0.394829))
+      Array(5.0, 0.394829).map(_ * BiallelicGenotyper.FIXED_POINT_SCALER))
 
     assert(state === 0)
     assert(MathUtils.fpEquals(qual, 20.0, tol = 1e-3))
@@ -84,7 +84,8 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
 
   test("properly handle diploid genotype state with het call") {
     val (state, qual) = BiallelicGenotyper.genotypeStateAndQuality(
-      Array(-10.0, 5.0, -1.907755))
+      Array(-10.0, 5.0, -1.907755)
+        .map(_ * BiallelicGenotyper.FIXED_POINT_SCALER))
 
     assert(state === 1)
     assert(MathUtils.fpEquals(qual, 30.0, tol = 1e-3))
@@ -92,7 +93,8 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
 
   test("properly handle triploid genotype state with hom alt call") {
     val (state, qual) = BiallelicGenotyper.genotypeStateAndQuality(
-      Array(-10.0, 5.0, -1.907755, 14.210340))
+      Array(-10.0, 5.0, -1.907755, 14.210340)
+        .map(_ * BiallelicGenotyper.FIXED_POINT_SCALER))
 
     assert(state === 3)
     assert(MathUtils.fpEquals(qual, 40.0, tol = 1e-3))
@@ -124,9 +126,9 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
     assert(snpObservation.alleleForwardStrand === 0)
     assert(snpObservation.otherForwardStrand === 1)
     assert(snpObservation.copyNumber === 2)
-    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(0), os.logL(0, 2, 0.9999, 0.99999)))
-    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(1), os.logL(1, 2, 0.9999, 0.99999)))
-    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(2), os.logL(2, 2, 0.9999, 0.99999)))
+    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(0), os.logL(0, 2, 0.9999, 0.99999).toInt))
+    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(1), os.logL(1, 2, 0.9999, 0.99999).toInt))
+    assert(MathUtils.fpEquals(snpObservation.referenceLogLikelihoods(2), os.logL(2, 2, 0.9999, 0.99999).toInt))
   }
 
   sparkTest("score snp in a read with evidence of the snp") {
@@ -143,17 +145,19 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
     assert(snpObservation.alleleForwardStrand === 0)
     assert(snpObservation.otherForwardStrand === 0)
     assert(snpObservation.copyNumber === 2)
-    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(0), os.logL(0, 2, 0.9999, 0.9999)))
-    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(1), os.logL(1, 2, 0.9999, 0.9999)))
-    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(2), os.logL(2, 2, 0.9999, 0.9999)))
+    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(0), os.logL(0, 2, 0.9999, 0.9999).toInt))
+    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(1), os.logL(1, 2, 0.9999, 0.9999).toInt))
+    assert(MathUtils.fpEquals(snpObservation.alleleLogLikelihoods(2), os.logL(2, 2, 0.9999, 0.9999).toInt))
   }
 
   test("build genotype for het snp") {
     val obs = Observation(3, 5,
       40 * 40 * 16,
-      Array(-24.0, -4.0, -12.0),
-      Array(-10.0, -1.0, -10.0),
-      Array(0.0, 0.0, 0.0),
+      Array(-24, -4, -12)
+        .map(i => (i * BiallelicGenotyper.FIXED_POINT_SCALER).toInt),
+      Array(-10, -1, -10)
+        .map(i => (i * BiallelicGenotyper.FIXED_POINT_SCALER).toInt),
+      Array(0, 0, 0),
       7, 9)
     val genotype = BiallelicGenotyper.observationToGenotype((snp, obs), "sample")
 
@@ -282,6 +286,7 @@ class BiallelicGenotyperSuite extends AvocadoFunSuite {
       })
 
     val gts = filteredGenotypes.rdd.collect
+    gts.foreach(println)
 
     assert(gts.size === 1)
     val gt = gts.head

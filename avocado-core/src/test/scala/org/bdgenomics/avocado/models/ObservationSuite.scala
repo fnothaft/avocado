@@ -29,60 +29,60 @@ class ObservationSuite extends FunSuite {
 
   test("cannot create an observation with 1-length likelihoods") {
     intercept[AssertionError] {
-      Observation(0, 0, 0.0, Array(0.0), Array(0.0), Array(0.0), 1, 0)
+      Observation(0, 0, 0.0, Array(0), Array(0), Array(0), 1, 0)
     }
   }
 
   test("cannot create an observation with mismatching likelihood lengths") {
     intercept[AssertionError] {
       Observation(0, 0, 0.0,
-        Array.fill(3)(0.0), Array.fill(3)(0.0), Array.fill(2)(0.0),
+        Array.fill(3)(0), Array.fill(3)(0), Array.fill(2)(0),
         1, 0)
     }
   }
 
-  val twoNils = Array(0.0, 0.0)
+  val twoNils = Array(0, 0)
 
   test("forward strand must be >= 0") {
     intercept[AssertionError] {
-      Observation(-1, 0, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 1, 0)
+      Observation(-1, 0, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 1, 0)
     }
     intercept[AssertionError] {
-      Observation(0, -1, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 1, 0)
+      Observation(0, -1, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 1, 0)
     }
   }
 
   test("forward strand cannot exceed coverage") {
     intercept[AssertionError] {
-      Observation(2, 0, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 1, 0)
+      Observation(2, 0, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 1, 0)
     }
     intercept[AssertionError] {
-      Observation(0, 3, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 1, 2)
+      Observation(0, 3, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 1, 2)
     }
   }
 
   test("square map-q must be >= 0") {
     intercept[AssertionError] {
-      Observation(0, 0, -1.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 1, 0)
+      Observation(0, 0, -1.0, Array(0, 0), Array(0, 0), Array(0, 0), 1, 0)
     }
   }
 
   test("coverage is strictly positive") {
     intercept[AssertionError] {
-      Observation(0, 0, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 0, 0,
+      Observation(0, 0, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 0, 0,
         totalCoverage = 0)
     }
     intercept[AssertionError] {
-      Observation(0, 0, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), -2, 4)
+      Observation(0, 0, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), -2, 4)
     }
     intercept[AssertionError] {
-      Observation(0, 0, 0.0, Array(0.0, 0.0), Array(0.0, 0.0), Array(0.0, 0.0), 2, -1)
+      Observation(0, 0, 0.0, Array(0, 0), Array(0, 0), Array(0, 0), 2, -1)
     }
   }
 
   test("invert an observation") {
     val obs = Observation(0, 1, 0.0,
-      Array(5.0, 6.0), Array(1.0, 2.0), Array(3.0, 4.0),
+      Array(5, 6), Array(1, 2), Array(3, 4),
       1, 2, totalCoverage = 4)
 
     val invertedObs = obs.invert
@@ -90,10 +90,10 @@ class ObservationSuite extends FunSuite {
     assert(invertedObs.otherForwardStrand === 0)
     assert(invertedObs.squareMapQ === 0.0)
     assert(invertedObs.copyNumber === 1)
-    assert(invertedObs.alleleLogLikelihoods(0) === 3.0)
-    assert(invertedObs.alleleLogLikelihoods(1) === 4.0)
-    assert(invertedObs.otherLogLikelihoods(0) === 1.0)
-    assert(invertedObs.otherLogLikelihoods(1) === 2.0)
+    assert(invertedObs.alleleLogLikelihoods(0) === 3)
+    assert(invertedObs.alleleLogLikelihoods(1) === 4)
+    assert(invertedObs.otherLogLikelihoods(0) === 1)
+    assert(invertedObs.otherLogLikelihoods(1) === 2)
     assert(invertedObs.alleleCoverage === 2)
     assert(invertedObs.otherCoverage === 1)
     assert(invertedObs.totalCoverage === 4)
@@ -101,7 +101,7 @@ class ObservationSuite extends FunSuite {
   }
 
   test("null an observation") {
-    val obs = Observation(0, 1, 0.0, Array(5.0, 6.0), Array(1.0, 2.0), Array(3.0, 4.0), 1, 2,
+    val obs = Observation(0, 1, 0.0, Array(5, 6), Array(1, 2), Array(3, 4), 1, 2,
       totalCoverage = 4)
 
     val nulledObs = obs.nullOut
@@ -109,10 +109,10 @@ class ObservationSuite extends FunSuite {
     assert(nulledObs.otherForwardStrand === 0)
     assert(nulledObs.squareMapQ === 0.0)
     assert(nulledObs.copyNumber === 1)
-    assert(nulledObs.alleleLogLikelihoods(0) === 0.0)
-    assert(nulledObs.alleleLogLikelihoods(1) === 0.0)
-    assert(nulledObs.otherLogLikelihoods(0) === 1.0)
-    assert(nulledObs.otherLogLikelihoods(1) === 2.0)
+    assert(nulledObs.alleleLogLikelihoods(0) === 0)
+    assert(nulledObs.alleleLogLikelihoods(1) === 0)
+    assert(nulledObs.otherLogLikelihoods(0) === 1)
+    assert(nulledObs.otherLogLikelihoods(1) === 2)
     assert(nulledObs.alleleCoverage === 0)
     assert(nulledObs.otherCoverage === 0)
     assert(nulledObs.totalCoverage === 4)

@@ -97,8 +97,8 @@ private[genotyping] object ScoredObservation extends Serializable {
     import sqlContext.implicits._
     sqlContext.createDataset(
       (Seq(None.asInstanceOf[Option[Int]]) ++
-        (0 to maxQuality).map(q => Some(q))).flatMap(optQ => {
-          (0 to maxMapQ).flatMap(mq => {
+        (1 to maxQuality).map(q => Some(q))).flatMap(optQ => {
+          (1 to maxMapQ).flatMap(mq => {
             Seq(
               ScoredObservation(true, true, true,
                 optQ, mq,
@@ -208,4 +208,16 @@ private[genotyping] case class ScoredObservation(
     alleleCoverage: Int,
     otherCoverage: Int,
     totalCoverage: Int) {
+
+  override def toString: String = {
+    "ScoredObservation(%s,%s,%s,%s,%d,%d,%d,%f,Array(%s),Array(%s),Array(%s),%d,%d,%d)".format(
+      isRef, isOther, forwardStrand,
+      optQuality, mapQ,
+      alleleForwardStrand, otherForwardStrand,
+      squareMapQ,
+      referenceLogLikelihoods.mkString(","),
+      alleleLogLikelihoods.mkString(","),
+      otherLogLikelihoods.mkString(","),
+      alleleCoverage, otherCoverage, totalCoverage)
+  }
 }

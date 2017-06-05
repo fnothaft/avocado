@@ -187,6 +187,10 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
             (rr, allele, obs)
           })
 
+        // did we observe an indel?
+        val containsIndel = (observations.exists(_._2.length != 1) ||
+          read.getCigar.exists(c => c == 'S' || c == 'H'))
+
         // find all variant/observation intersections
         val intersection = IntersectVariants.time {
           variants.map(v => {
@@ -200,6 +204,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
 
         // process these intersections
         ProcessIntersections.time {
+          var matchedIndel = false
+
           val obsMap = intersection.flatMap(kv => {
             val (variant, observed) = kv
 
@@ -219,6 +225,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
                   .head
                   ._2
                 if (leadBaseObserved(0) == variant.getAlternateAllele()(0)) {
+                  matchedIndel = true
                   Some((DiscoveredVariant(variant),
                     insObserved.head._3))
                 } else {
@@ -245,6 +252,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
                   if (delsObserved.size == 1 &&
                     observed.size == 2 &&
                     delsObserved.head == deletionLength(variant)) {
+                    matchedIndel = true
                     Some((DiscoveredVariant(variant), obs.asAlt))
                   } else {
                     Some((DiscoveredVariant(variant), obs.nullOut))
@@ -262,7 +270,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
           })
 
           // check for overlapping other-alts
-          obsMap.map(p => {
+          val afterOverlapping = obsMap.map(p => {
             val (dv, observed) = p
             if (observed.isNonRef) {
               val overlappingObs = obsMap.filter(kv => kv._1.overlaps(dv))
@@ -277,6 +285,21 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
               p
             }
           })
+
+          // if we contained an indel and didn't match any indels,
+          // set indel observations to non-ref
+          if (containsIndel && !matchedIndel) {
+            afterOverlapping.map(p => {
+              val (dv, observed) = p
+              if (isIndel(dv)) {
+                (dv, observed.nullOut)
+              } else {
+                p
+              }
+            })
+          } else {
+            afterOverlapping
+          }
         }
       } catch {
         case t: Throwable => ProcessException.time {
@@ -286,6 +309,10 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
         }
       }
     }
+  }
+
+  private def isIndel(dv: DiscoveredVariant): Boolean = {
+    dv.referenceAllele.length != dv.alternateAllele.length
   }
 
   private def isSnp(v: Variant): Boolean = {

@@ -30,6 +30,7 @@ import org.bdgenomics.adam.rdd.variant.{
   GenotypeRDD,
   VariantRDD
 }
+import org.bdgenomics.adam.rich.RichAlignmentRecord
 import org.bdgenomics.adam.util.PhredUtils
 import org.bdgenomics.avocado.Timers._
 import org.bdgenomics.avocado.models.Observation
@@ -52,6 +53,9 @@ import org.bdgenomics.utils.misc.{ Logging, MathUtils }
 import scala.annotation.tailrec
 import scala.collection.JavaConversions._
 import scala.math.{ exp, log => mathLog, log10, sqrt }
+
+private[avocado] case class Quality(score: Int) {
+}
 
 /**
  * Calls genotypes from reads assuming a biallelic genotyping model.
@@ -96,6 +100,9 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
       "Currently, we only support a single sample. Saw: %s.".format(
         samples.mkString(", ")))
 
+    val mismatchScore = mismatchQuantile(reads)
+    log.warn("Mismatch score threshold is %d.".format(mismatchScore))
+
     // join reads against variants
     val joinedRdd = JoinReadsAndVariants.time {
       TreeRegionJoin.joinAndGroupByRight(
@@ -106,7 +113,9 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
     }
 
     // score variants and get observations
-    val observationRdd = readsToObservations(joinedRdd, ploidy)
+    val observationRdd = readsToObservations(joinedRdd,
+      ploidy,
+      mismatchThreshold = mismatchScore)
 
     // genotype observations
     val genotypeRdd = observationsToGenotypes(observationRdd, samples.head)
@@ -160,6 +169,45 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
       optDesiredPartitionSize = optDesiredPartitionSize)
   }
 
+  private def mismatchScore(read: AlignmentRecord): Int = {
+    val richRead = new RichAlignmentRecord(read)
+    val start = read.getStart
+    val scores = richRead.qualityScores
+
+    val clippedStart = (start - richRead.unclippedStart).toInt
+    val clippedEnd = (richRead.unclippedEnd - read.getEnd).toInt
+
+    val startSum = scores.take(clippedStart).filter(_ > 10).sum
+    val endSum = scores.take(clippedEnd).filter(_ > 10).sum
+
+    val mismatchScores = richRead.mdTag.fold(0)(tag => {
+      tag.mismatches.map(p => {
+        val idx = (p._1 - start).toInt
+        if (idx < scores.length) {
+          scores(idx)
+        } else {
+          0
+        }
+      }).sum
+    })
+
+    endSum + startSum + mismatchScores
+  }
+
+  private def mismatchQuantile(read: AlignmentRecordRDD,
+                               percentile: Double = 0.75): Int = {
+    val scores = read.rdd.map(mismatchScore).map(s => Quality(s))
+
+    val sqlContext = SQLContext.getOrCreate(scores.context)
+    import sqlContext.implicits._
+    val scoreDs = sqlContext.createDataset(scores)
+
+    scoreDs.stat
+      .approxQuantile("score", Array(percentile), 0.2)
+      .head
+      .toInt
+  }
+
   /**
    * Scores the putative variants covered by a read against a single read.
    *
@@ -170,7 +218,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    */
   private[genotyping] def readToObservations(
     readAndVariants: (AlignmentRecord, Iterable[Variant]),
-    copyNumber: Int): Iterable[(DiscoveredVariant, SummarizedObservation)] = ObserveRead.time {
+    copyNumber: Int,
+    mismatchThreshold: Int = Int.MaxValue): Iterable[(DiscoveredVariant, SummarizedObservation)] = ObserveRead.time {
 
     // unpack tuple
     val (read, variants) = readAndVariants
@@ -179,6 +228,7 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
       Iterable.empty
     } else {
       try {
+        var mismatches = mismatchScore(read)
 
         // observe this read
         val observations = Observer.observeRead(read, copyNumber)
@@ -288,7 +338,8 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
 
           // if we contained an indel and didn't match any indels,
           // set indel observations to non-ref
-          if (containsIndel && !matchedIndel) {
+          if (!matchedIndel && containsIndel && (mismatches >= mismatchThreshold)) {
+            log.warn("Ignoring read %s with mismatch score %d.".format(read, mismatches))
             afterOverlapping.map(p => {
               val (dv, observed) = p
               if (isIndel(dv)) {
@@ -344,9 +395,12 @@ private[avocado] object BiallelicGenotyper extends Serializable with Logging {
    */
   private[genotyping] def readsToObservations(
     rdd: RDD[(AlignmentRecord, Iterable[Variant])],
-    ploidy: Int): RDD[(Variant, Observation)] = ObserveReads.time {
+    ploidy: Int,
+    mismatchThreshold: Int = 0): RDD[(Variant, Observation)] = ObserveReads.time {
 
-    val observations = rdd.flatMap(readToObservations(_, ploidy))
+    val observations = rdd.flatMap(readToObservations(_,
+      ploidy,
+      mismatchThreshold = mismatchThreshold))
 
     // convert to dataframe
     val sqlContext = SQLContext.getOrCreate(rdd.context)
